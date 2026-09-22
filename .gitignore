@@ -1,0 +1,23 @@
+target/
+
+# Kernel fast-boot experiment artifacts. The images are GPL-2.0 and
+# their source is not tracked, so they must never be committed.
+kernel/linux-*.tar.xz*
+kernel/vmlinuz-*
+kernel/vmlinux-*
+
+# Agent and editor scratch state
+/.claude/
+/.codex/
+CLAUDE.local.md
+*.local.md
+.DS_Store
+
+# Run output from the lab scripts and the guest harnesses
+*.log
+
+# Operator-specific test configuration
+/.env
+
+# Site-specific patterns for tools/public-surface.sh
+/.public-surface.local

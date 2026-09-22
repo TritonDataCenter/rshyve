@@ -1,0 +1,561 @@
+name: CI
+
+# What this workflow proves, and what it does not.
+#
+# The product runs on illumos, and GitHub has no illumos runner. Neither
+# binary links anywhere but illumos: bhyve-api binds SunOS ioctls and
+# viona-api needs libdladm. Both still type-check here. firehyve
+# cross-checks against the illumos target. Both binaries build and run
+# their tests on the host target, where rshyve's C dependencies
+# (zstd-sys, and the vendored libtpms that vmm-tpm-sys builds) compile
+# natively.
+#
+# A green run means:
+#   - The tree is formatted and the lockfile is current.
+#   - Every workspace member is clippy-clean under `-D warnings`.
+#   - The portable tests pass in the dev and release profiles.
+#   - The recorded-ioctl tests of the three illumos binding crates pass.
+#   - Every portable crate and its test targets type-check against the
+#     illumos target.
+#   - Both platforms compile the same tests, except the gated ones that
+#     tools/test-parity.expected lists with a reason.
+#   - The dependency, secret, unsafe-comment and public-surface policies
+#     hold.
+#   - tools/fhrun-init and tools/virtiofs-test, which are outside the
+#     workspace, are formatted, linted and tested.
+#
+# A green run does not mean the VMM builds for illumos, boots a guest or
+# passes a platform test. The illumos build host runs those (see
+# docs/testing.md). Do not read this badge as platform coverage. Two
+# gaps are specific:
+#   - rshyve's `cfg(target_os = "illumos")` bodies are linted on the host
+#     target only, because zstd-sys and libtpms need a C toolchain for
+#     the target. CONTRIBUTING.md records the clippy run on the build
+#     host.
+#   - usdt's probe macros expand from a host-built usdt-impl, which picks
+#     its backend from the host OS. On a Linux runner every probe is a
+#     no-op. The build host checks probe emission with `dtrace -l -P vmm`.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Every third-party action is pinned to a commit SHA, with its tag in a
+# trailing comment. A tag can move. cargo-deny-action vouches for the
+# dependency graph, so a moved tag there lets the graph vouch for
+# itself. The `secrets` job pins the gitleaks download by version and
+# SHA-256 for the same reason.
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Proves Cargo.lock matches Cargo.toml.
+  lock:
+    name: lockfile is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: cargo metadata --locked --format-version 1 > /dev/null
+      - name: Cargo.lock unchanged
+        run: git diff --exit-code Cargo.lock
+
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: rustup component add rustfmt
+      - run: cargo fmt --all -- --check
+
+  # Lints the portable crates on the host under `-D warnings`.
+  clippy:
+    name: clippy (portable crates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: rustup component add clippy
+      - run: >
+          cargo clippy --locked --all-targets
+          -p vmm_api_common -p dladm -p vmm_core -p vmm_devices -p vmm_devices_testsupport
+          -p vmm_config -p vmm_migrate -p vmm_hyperv -p vmm_machine -p vmm_boot
+          -p vmm_passthru -p vmm_virtio -p vmm_storage -p vmm_hid
+          -p fhrun
+          -- -D warnings
+
+  clippy-illumos:
+    name: clippy against the illumos target
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: rustup target add x86_64-unknown-illumos
+      - run: rustup component add clippy
+      # The ioctl bindings hold most of the `unsafe` in the tree. The
+      # workspace denies `clippy::correctness`, which catches undefined
+      # behaviour and fires only under clippy, and only a lint against the
+      # real target means anything for the bindings. firehyve has no C
+      # dependencies, so it cross-compiles, and this is the only job that
+      # compiles it for the target. Its usdt probes are no-ops here (see the
+      # header).
+      - run: >
+          cargo clippy --locked --target x86_64-unknown-illumos --all-targets
+          -p bhyve_api_sys -p bhyve_api -p viona_api
+          -p firehyve
+          -- -D warnings
+
+  cross-check:
+    name: illumos bindings type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: rustup target add x86_64-unknown-illumos
+      # Type-checks every portable crate, tests included, against the
+      # illumos target. This is the only job that compiles a `#[cfg(test)]`
+      # body behind `cfg(target_os = "illumos")`: the clippy and test jobs
+      # build for the host, and firehyve reaches these crates as libraries
+      # only.
+      #
+      # vmm_passthru, vmm_storage and vmm_hid need this job for a second
+      # reason. firehyve does not depend on them, and rshyve, which does,
+      # cannot cross-compile, so no other job compiles their illumos ioctl
+      # code for the target.
+      #
+      # vmm_migrate is left out: zstd-sys needs an illumos C cross-compiler,
+      # which this runner does not have. The host jobs and the build host
+      # cover it.
+      #
+      # check does not link, so no linker is needed.
+      - run: >
+          cargo check --locked --all-targets
+          --target x86_64-unknown-illumos
+          -p bhyve_api_sys -p bhyve_api -p viona_api -p dladm -p vmm_api_common
+          -p vmm_config -p vmm_core -p vmm_devices -p vmm_devices_testsupport
+          -p vmm_boot -p vmm_machine -p vmm_hyperv
+          -p vmm_passthru -p vmm_virtio -p vmm_storage -p vmm_hid
+          -p fhrun
+
+  test:
+    name: portable tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Codecs, bounds checks, device register models and the migration
+      # protocol.
+      #
+      # The three binding crates are here for their tests. Each test drives
+      # a recorded ioctl seam over /dev/null and a pipe and reaches no
+      # kernel. Those recordings are the only pins on the command number and
+      # the arguments the kernel is given. The MSRV job leaves the bindings
+      # out, because the compile that matters for them is the illumos one.
+      # tools/check-ci-crates.sh asserts that this job names them.
+      - run: >
+          cargo test --locked
+          -p vmm_api_common -p dladm -p vmm_core -p vmm_devices -p vmm_devices_testsupport
+          -p vmm_config -p vmm_migrate -p vmm_hyperv -p vmm_machine -p vmm_boot
+          -p vmm_passthru -p vmm_virtio -p vmm_storage -p vmm_hid
+          -p fhrun -p bhyve_api_sys -p bhyve_api -p viona_api
+      # Release is the profile that ships. slog drops `debug!` at compile
+      # time there, and the optimiser changes what a test can observe, so a
+      # green debug run proves nothing about it.
+      - run: >
+          cargo test --locked --release
+          -p vmm_api_common -p dladm -p vmm_core -p vmm_devices -p vmm_devices_testsupport
+          -p vmm_config -p vmm_migrate -p vmm_hyperv -p vmm_machine -p vmm_boot
+          -p vmm_passthru -p vmm_virtio -p vmm_storage -p vmm_hid
+          -p fhrun -p bhyve_api_sys -p bhyve_api -p viona_api
+
+  guest-init:
+    name: guest init (musl)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: rustup target add x86_64-unknown-linux-musl
+      - run: rustup component add clippy rustfmt
+      # tools/fhrun-init is outside the root workspace, so no other job
+      # reaches it. The runner is x86_64 Linux, so the static musl test
+      # binary runs natively.
+      - name: format, lint and test the guest init
+        working-directory: tools/fhrun-init
+        run: |
+          cargo fmt -- --check
+          cargo clippy --locked --all-targets --target x86_64-unknown-linux-musl -- -D warnings
+          cargo test --locked --target x86_64-unknown-linux-musl
+
+  guest-vsock-test:
+    name: guest test harness (musl)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: rustup target add x86_64-unknown-linux-musl
+      - run: rustup component add clippy rustfmt
+      # Outside the root workspace, like tools/fhrun-init. Its spec parsing
+      # decides what a container image runs, and that logic is host
+      # independent, so its tests run here.
+      - name: format, lint and test the guest harness
+        working-directory: tools/virtiofs-test
+        run: |
+          cargo fmt -- --check
+          cargo clippy --locked --all-targets --target x86_64-unknown-linux-musl -- -D warnings
+          cargo test --locked --target x86_64-unknown-linux-musl
+
+  msrv:
+    name: builds on the declared MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Checks the portable crates on the toolchain that Cargo.toml declares
+      # as rust-version.
+      #
+      # Cargo.toml is attacker-controlled on a fork pull request, so the
+      # value is validated to a bare version number before use, and it goes
+      # through the environment, not into a shell command.
+      - name: read and validate rust-version
+        id: msrv
+        run: |
+          v=$(grep -m1 '^rust-version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          printf '%s' "$v" | grep -qxE '[0-9]+\.[0-9]+(\.[0-9]+)?' \
+            || { echo "refusing to use rust-version '$v'" >&2; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: install the MSRV toolchain
+        env:
+          MSRV: ${{ steps.msrv.outputs.version }}
+        run: rustup toolchain install "$MSRV" --profile minimal
+      - name: check on the MSRV toolchain
+        env:
+          MSRV: ${{ steps.msrv.outputs.version }}
+        run: >
+          cargo "+$MSRV" check --locked
+          -p vmm_api_common -p dladm -p vmm_core -p vmm_devices -p vmm_devices_testsupport
+          -p vmm_config -p vmm_migrate -p vmm_hyperv -p vmm_machine -p vmm_boot
+          -p vmm_passthru -p vmm_virtio -p vmm_storage -p vmm_hid
+          -p fhrun
+
+  binaries:
+    name: both binaries type-check
+    runs-on: ubuntu-latest
+    steps:
+      # The only job that builds rshyve, so the only one that needs the
+      # libtpms submodule.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: true
+      - run: rustup target add x86_64-unknown-illumos
+      # vmm-tpm-sys builds the libtpms submodule with autotools. The runner
+      # image has these packages, but naming them keeps the dependency
+      # visible when the image changes.
+      - name: install the libtpms build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool pkg-config libssl-dev
+      # rshyve cannot cross-compile: zstd-sys and libtpms need a C
+      # toolchain for the target, and this runner has no illumos
+      # cross-compiler. The host target compiles them natively and still
+      # type-checks every line of rshyve. firehyve compiles against the real
+      # target in `clippy-illumos`.
+      #
+      # `test`, not `check`, so the rshyve and firehyve tests run. The
+      # control socket peer-credential test is gated to Linux and macOS, so
+      # the illumos build host skips it, and this runner is the only machine
+      # that runs it. None of these packages has a bench or example target,
+      # so `--all-targets` would add nothing.
+      - run: cargo test --locked -p rshyve -p firehyve
+      # The vTPM tests drive real libtpms, not a stub, so they need the
+      # submodule and the autotools packages this job installs. vmm_tpm_sys
+      # checks that the library answers TPM2_GetRandom, which a build that
+      # produced no library cannot do.
+      - run: cargo test --locked -p vmm_tpm -p vmm_tpm_sys
+      # rshyve and the TPM crates cannot cross-compile, so this is the only
+      # job that lints them. It lints the host target, so rshyve's
+      # `cfg(target_os = "illumos")` bodies are not covered (see the
+      # header).
+      - run: >
+          cargo clippy --locked --all-targets
+          -p rshyve -p vmm_tpm -p vmm_tpm_sys
+          -- -D warnings
+
+  # cargo-deny: advisories, banned crates, licenses and sources, as
+  # deny.toml sets them.
+  supply-chain:
+    name: advisories, licenses, sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check advisories bans licenses sources
+
+  # Scans the tree and its full history for committed secrets.
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    env:
+      # Pinned by version and digest. The gitleaks binary is MIT. The
+      # gitleaks-action wrapper is not used: it needs a paid license key for
+      # a repository an organization owns, and exits 1 without one.
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: install gitleaks
+        run: |
+          set -euo pipefail
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL "$url" -o gitleaks.tar.gz
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar xzf gitleaks.tar.gz gitleaks
+      # Scans the working tree and the full history reachable from it.
+      - run: ./gitleaks detect --source . --config .gitleaks.toml --redact --no-banner
+
+  boundary:
+    name: firehyve dependency boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Proves that firehyve's dependency graph holds none of the crates
+      # deny-firehyve.toml bans. Scoping the graph to one workspace member
+      # makes this a per-binary gate. `cargo tree -i` cannot do it: it exits
+      # 0 both when a crate is present and when it is filtered out.
+      #
+      # Setting `arguments` drops the action's default --all-features, on
+      # purpose. All-features enables optional dependencies a real firehyve
+      # build never links, so this job sees a different dependency view from
+      # the supply-chain job.
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: ./bin/firehyve/Cargo.toml
+          arguments: --locked --config deny-firehyve.toml --target x86_64-unknown-illumos --exclude-dev
+          command: check bans
+      # Two silent failures cargo-deny cannot report: an unmatched `deny`
+      # entry, and a missing --config that falls back to the default.
+      - run: tools/check-boundary-bans.sh
+
+  platform-deps:
+    name: stock-PI dependency gate self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # The gate runs on the illumos build host, where rshyve is linked (see
+      # tools/remote-build.sh). CI proves that the script is not silently
+      # broken, because a gate that always passes is worse than no gate. A
+      # syntax error and a missed rejection both fail here. Any Linux binary
+      # needs libc.so.6, which no platform image ships, so the script must
+      # reject one.
+      - run: sh -n tools/check-needed.sh
+      - name: the gate rejects a binary the platform image cannot run
+        run: |
+          # Without readelf the script exits 1 for want of a reader,
+          # which would pass the test below for the wrong reason.
+          command -v readelf
+          if tools/check-needed.sh "$(command -v true)"; then
+            echo "check-needed.sh accepted a non-illumos binary" >&2
+            exit 1
+          fi
+
+  # Proves that the tree and the commit messages of the range carry no
+  # private infrastructure detail, personal identifier or oversized
+  # binary. tools/public-surface.sh holds the rules.
+  public-surface:
+    name: public surface guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The commit messages of the pushed range are scanned too, so
+          # the range has to be reachable.
+          fetch-depth: 0
+      # Event fields go through the environment, not the command line:
+      # a pull request title or ref is attacker-controlled text.
+      - name: scan the tree and the commit messages of this range
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            pull_request) range="$BASE..$HEAD_SHA" ;;
+            *)
+              # A new branch or a force-push gives a "before" that is not an
+              # ancestor of HEAD, or is not in this clone. Then scan all of
+              # HEAD's history: a rewrite can change any message.
+              if git merge-base --is-ancestor "$BEFORE" "$HEAD_SHA" 2>/dev/null; then
+                range="$BEFORE..$HEAD_SHA"
+              else
+                range="$HEAD_SHA"
+              fi
+              ;;
+          esac
+          tools/public-surface.sh --commits "$range"
+      # Watch the commit message scan fail before trusting it. The tree of
+      # this clone is the one the step above passed, so the only hit can be
+      # the planted message. The output is checked for it, so a failure for
+      # another reason does not pass this step.
+      - name: the guard fails on a planted address in a commit message
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          git clone -q . "$tmp/clone"
+          cd "$tmp/clone"
+          git config user.email ci@example.com
+          git config user.name ci
+          # Assembled at run time: the literal would trip the guard on
+          # this file, which is the guard doing its job.
+          third=168
+          git commit -q --allow-empty -m "test" -m "host root@192.$third.0.1 here"
+          rc=0
+          out="$(tools/public-surface.sh --commits HEAD~1..HEAD 2>&1)" || rc=$?
+          printf '%s\n' "$out"
+          if [ "$rc" -ne 1 ]; then
+            echo "the guard answered $rc with a lab address in a commit message, wanted 1" >&2
+            exit 1
+          fi
+          printf '%s\n' "$out" | grep -q 'commit message' \
+            || { echo "the guard failed, but not on the commit message" >&2; exit 1; }
+      # A silent pass is the worst failure of this guard. A `git grep` that
+      # fails must not read as "no hits", and the build host runs the guard
+      # on an extracted tarball, not a checkout. This step watches both
+      # failures happen.
+      - name: the guard fails on a planted address, and refuses a tree it cannot list
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          elsewhere="$(mktemp -d)"
+          trap 'rm -rf "$tmp" "$elsewhere"' EXIT
+          # An extracted archive is what the build host has: no checkout.
+          git archive HEAD | tar -x -C "$tmp"
+          # Assembled at run time, because the literal would trip the guard
+          # on this file. The address is a generic RFC 1918 one, because this
+          # file is public and must not carry a real host.
+          third=168
+          printf 'root@192.%s.0.1\n' "$third" > "$tmp/docs/ci-self-test.md"
+          if "$tmp/tools/public-surface.sh"; then
+            echo "the guard reported clean with a lab address in the tree" >&2
+            exit 1
+          fi
+          rm "$tmp/docs/ci-self-test.md"
+          "$tmp/tools/public-surface.sh"
+          # A listing that misses this tree must refuse. An empty answer
+          # read as a clean one is the failure this step exists for.
+          mkdir -p "$elsewhere/tools"
+          cp "$tmp/tools/public-surface.sh" "$elsewhere/tools/"
+          rc=0
+          "$elsewhere/tools/public-surface.sh" || rc=$?
+          if [ "$rc" -ne 2 ]; then
+            echo "the guard answered $rc outside its own tree, wanted 2" >&2
+            exit 1
+          fi
+
+  unsafe-safety:
+    name: every unsafe block is justified
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # tools/safety-budget.txt records, per crate, how many unsafe blocks
+      # have no `// SAFETY:` comment, and this check holds the count down. A
+      # new undocumented block fails. A newly documented block fails until
+      # the budget is lowered, so the number cannot drift either way.
+      - run: tools/check-safety-comments.py
+      # A gate nobody has watched fail is not known to work. The copy is
+      # an extracted archive, which is also what the illumos build host
+      # has: no checkout, so the gate falls back to a filesystem walk.
+      # A listing it cannot build must refuse, not report clean.
+      - name: the gate notices an undocumented block and a stale budget
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          git archive HEAD | tar -x -C "$tmp"
+          cd "$tmp"
+          tools/check-safety-comments.py | grep -q 'from a filesystem walk'
+          printf 'fn f() { let _ = unsafe { 1 }; }\n' > crates/vmm-core/src/ci_self_test.rs
+          if tools/check-safety-comments.py; then
+            echo "the gate passed with an undocumented unsafe block added" >&2
+            exit 1
+          fi
+          rm crates/vmm-core/src/ci_self_test.rs
+          tools/check-safety-comments.py
+          sed -i 's/^crates\/vmm-core .*/crates\/vmm-core 9999/' tools/safety-budget.txt
+          if tools/check-safety-comments.py; then
+            echo "the gate passed with a budget nobody lowered" >&2
+            exit 1
+          fi
+
+  ci-coverage:
+    name: every portable crate is named by a job
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # A crate that no `-p` list names is unlinted, untested code that the
+      # workflow reports green. The script derives its list from the
+      # workspace members, so a new crate fails here until a job names it.
+      - run: tools/check-ci-crates.sh
+      # Watch the gate fail before trusting it. viona_api is exempt from the
+      # MSRV job, so this proves the gate still requires it in the jobs that
+      # cover it.
+      - name: the gate notices a crate dropped from the jobs that cover it
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          git archive HEAD | tar -x -C "$tmp"
+          ci="$tmp/.github/workflows/ci.yml"
+          # Named through a variable so this file does not carry the
+          # literal the step strips, which would count itself.
+          crate=viona_api
+          before="$(grep -c -- "-p $crate" "$ci")"
+          sed "s/ -p $crate//g" "$ci" > "$ci.cut"
+          mv "$ci.cut" "$ci"
+          # grep prints 0 and exits 1 when it matches nothing, and prints
+          # nothing when it cannot read the file. Only the first is
+          # expected here.
+          after="$(grep -c -- "-p $crate" "$ci" || true)"
+          [ -n "$after" ] || { echo "cannot read the workflow copy" >&2; exit 1; }
+          # A defect that did not land would make the check below pass
+          # for the wrong reason, which is the failure this job is about.
+          if [ "$before" -lt 2 ] || [ "$after" -ne 0 ]; then
+            echo "the defect did not land: $before job lists named $crate, $after still do" >&2
+            exit 1
+          fi
+          if (cd "$tmp" && tools/check-ci-crates.sh); then
+            echo "the gate reported full coverage with $crate dropped from every job" >&2
+            exit 1
+          fi
+
+  test-parity:
+    name: illumos and CI compile the same tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: rustup target add x86_64-unknown-illumos
+      # Every job runs on ubuntu, so a test behind
+      # `cfg(target_os = "illumos")` runs on no CI machine, and a test behind
+      # `cfg(not(target_os = "illumos"))` never runs on the product platform.
+      # Nothing else reports either case.
+      #
+      # The script asks rustc for the test list of each target, compares the
+      # two, and fails when the set of platform-gated tests differs from
+      # tools/test-parity.expected. A change to that file is a reviewed
+      # decision.
+      #
+      # The illumos list comes from the MIR: the test harness rustc builds
+      # names every test it kept. The same run lists this runner's tests both
+      # ways and asserts that the MIR reader returns exactly those names. On
+      # the build host, --check-reader checks the illumos side against a
+      # real harness.
+      #
+      # The job also compiles every reachable package for illumos with its
+      # test targets. It reads the workspace members, not a `-p` list, so a
+      # new package is covered on the day it is added.
+      #
+      # rshyve, vmm_migrate and the TPM crates are skipped: their
+      # dependencies compile C for the target, and this runner has no
+      # illumos cross-compiler. The build host covers them.
+      - run: tools/check-test-parity.py

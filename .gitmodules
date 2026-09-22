@@ -1,0 +1,3 @@
+[submodule "third_party/libtpms"]
+	path = third_party/libtpms
+	url = https://github.com/stefanberger/libtpms.git

@@ -1,0 +1,27 @@
+--- a/src/tpm2/RuntimeProfile.c	2026-05-06 22:10:01
++++ b/src/tpm2/RuntimeProfile.c	2026-05-07 14:25:29
+@@ -244,13 +244,13 @@
+     char exp;
+ 
+     while (true) {
+-        comma = index(pos, ',');
++        comma = strchr(pos, ',');
+         if (!comma)
+             return;
+ 
+         /* temporarily terminate string here */
+         *comma = '\0';
+-        equals = index(pos, '=');
++        equals = strchr(pos, '=');
+         if (equals) {
+             *equals = '\0';
+             exp = '=';
+@@ -275,7 +275,7 @@
+                     break;
+                 }
+                 /* only a prefix matched; continue search after comma */
+-                ncomma = index(dup, ',');
++                ncomma = strchr(dup, ',');
+                 if (!ncomma)
+                     break;
+             } else {

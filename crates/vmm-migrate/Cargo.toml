@@ -1,0 +1,23 @@
+[package]
+name = "vmm_migrate"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+license = "MPL-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+vmm_core.workspace = true
+vmm_devices.workspace = true
+bhyve_api.workspace = true
+ron.workspace = true
+serde.workspace = true
+slog.workspace = true
+thiserror.workspace = true
+tungstenite = "0.21"
+zstd = "0.13"
+
+[dev-dependencies]
+tempfile = "3"

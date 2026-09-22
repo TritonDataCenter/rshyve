@@ -1,0 +1,27 @@
+[package]
+name = "fhrun"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+rust-version.workspace = true
+description = "Run a Linux binary as if it were a process, wrapped in a firehyve microVM."
+
+[[bin]]
+name = "fhrun"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile = "3"
+
+# Dev only: the round-trip test parses fhrun's emitted argv back
+# through the shared grammar. fhrun never links the VMM.
+[dev-dependencies]
+clap.workspace = true
+vmm_config.workspace = true

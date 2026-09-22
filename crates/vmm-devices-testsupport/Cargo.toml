@@ -1,0 +1,12 @@
+[package]
+name = "vmm_devices_testsupport"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+license = "MPL-2.0"
+
+[lints]
+workspace = true
+
+# No [dependencies]. This crate is std only, so a dev-dependency on it
+# cannot unify features with anything in a release graph.

@@ -1,0 +1,26 @@
+[package]
+name = "vmm_virtio"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+license = "MPL-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+vmm_devices.workspace = true
+vmm_core.workspace = true
+viona_api.workspace = true
+dladm.workspace = true
+anyhow.workspace = true
+getrandom.workspace = true
+libc.workspace = true
+slog.workspace = true
+thiserror.workspace = true
+usdt = { workspace = true, features = ["asm"] }
+zerocopy.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+vmm_devices_testsupport.workspace = true

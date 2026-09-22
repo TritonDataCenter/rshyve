@@ -1,0 +1,62 @@
+rust-bhyve - rshyve and firehyve, Rust bhyve userspace VMMs for Triton/SmartOS
+Copyright (c) Edgecast Cloud, LLC
+
+This product is licensed under the Mozilla Public License, v. 2.0.
+A copy of the license is in the LICENSE file at the root of this
+repository, and is also available at https://mozilla.org/MPL/2.0/.
+
+This product includes, derives from, or redistributes software from the
+projects listed below. THIRD_PARTY.md records the exact upstream
+revision, license, and local modifications for each.
+
+--------------------------------------------------------------------
+Propolis
+Copyright 2022 Oxide Computer Company
+Licensed under the Mozilla Public License, v. 2.0.
+https://github.com/oxidecomputer/propolis
+
+This project is built on Propolis. The bhyve and viona kernel ioctl
+bindings, the address space manager, the PS/2 keyboard and controller
+models, and parts of the PCI, UART, and VM-exit layers are copied from
+or derived from it.
+
+Measured against Propolis b428c40efae0be950e996f9dfd5ab8d02db59184:
+19 files at or above 30% similarity, 3300 significant lines, of which 6
+are essentially verbatim. Each such file carries a header naming its
+upstream counterpart. THIRD_PARTY.md lists every file with its measured
+similarity, and tools/propolis-derivation.py regenerates that list.
+Individual files retain their MPL Exhibit A headers.
+
+--------------------------------------------------------------------
+libtpms
+Copyright (c) IBM Corporation, 2006-2011
+Copyright (c) Microsoft Corporation, 2010-2022
+Copyright (c) Trusted Computing Group and its contributors, 2022-2025
+Licensed under the 3-clause BSD license.
+https://github.com/stefanberger/libtpms
+
+A submodule at third_party/libtpms, statically linked into the rshyve
+binary to provide the virtual TPM. The source is not redistributed here,
+so the full license text, covering all three grants, is reproduced at
+LICENSES/BSD-3-Clause-libtpms.txt.
+
+Binary redistributions of this software must reproduce the libtpms
+copyright notices and license text in the accompanying documentation or
+other materials.
+
+--------------------------------------------------------------------
+EDK II (edk2-bhyve firmware)
+Copyright (c) 2004-2020, Intel Corporation and contributors
+Licensed under the 3-clause BSD license.
+https://github.com/freebsd/uefi-edk2
+
+Not vendored. Fetched at need by tools/fetch-edk2-bhyve.sh against
+pinned checksums. License text is at LICENSES/BSD-3-Clause-edk2.txt.
+
+--------------------------------------------------------------------
+Virtual I/O Device (VIRTIO) Version 1.3
+Copyright (c) OASIS Open 2023. All Rights Reserved.
+https://docs.oasis-open.org/virtio/virtio/v1.3/csd01/virtio-v1.3-csd01.html
+
+Not redistributed. The device models are written against this
+specification and cite it by section; read it at the URL above.

@@ -1,0 +1,69 @@
+[advisories]
+# Surface stale exceptions rather than hiding them: if an ignored
+# advisory stops matching, the entry should be removed, not left to rot.
+unused-ignored-advisory = "warn"
+ignore = [
+    # Owner: VMM maintainers. Review by 2026-11-17. memmap 0.7 is reached only
+    # through usdt 0.5. Upgrading first requires an illumos diff of the `vmm`
+    # provider probe names, which are declared in the `usdt::provider` blocks
+    # (crates/vmm-core/src/pio.rs, vmm-machine/src/vcpu_tasks.rs,
+    # vmm-virtio/src/block.rs, vmm-hid/src/ps2/ctrl.rs) and consumed by
+    # tools/profile/.
+    { id = "RUSTSEC-2020-0077", reason = "VMM maintainers; review by 2026-11-17; preserve the vmm provider probe names until an illumos probe-name diff is complete" },
+    # Owner: migration maintainers. Review by 2026-11-17. rand 0.8.5 is reached
+    # only through tungstenite 0.21, whose `log` feature is disabled, so the
+    # custom-logger rand::rng() path is unreachable. Remediation requires moving
+    # the tokio-tungstenite/tungstenite pair together.
+    #
+    # This entry matches nothing, and cargo-deny says so: the advisory is
+    # informational (`unsound`), which cargo-deny does not surface by default
+    # and cargo audit does. The entry stays so the exception is in place if
+    # that changes. unused-ignored-advisory is "warn", not "allow", so this
+    # stays visible.
+    { id = "RUSTSEC-2026-0097", reason = "Migration maintainers; review by 2026-11-17; tungstenite's log feature is disabled, and remediation requires upgrading the WebSocket pair together" },
+]
+
+[licenses]
+unused-allowed-license = "allow"
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "deny"
+# depth = 1 so an exception covers only the crate's own direct
+# dependencies. Without it, the whole subtree under each entry is exempt,
+# which silently swallows unrelated duplicates (syn, proc-macro2, serde,
+# libc) and would let a future split in any of them pass this gate.
+skip-tree = [
+    # slog remains on 0.3 while vmm_devices uses the 0.4 erased-serde API.
+    { crate = "erased-serde", depth = 1, reason = "slog pins 0.3 while vmm_devices uses 0.4" },
+    # rand/tungstenite needs 0.2, jobserver needs 0.3, and uuid/tempfile need 0.4.
+    { crate = "getrandom", depth = 1, reason = "independent rand, build-tool, and UUID/tempfile dependency lines cannot yet be unified" },
+    # The usdt stack remains on 1 while pest and its derive stack use 2.
+    { crate = "thiserror", depth = 1, reason = "usdt pins 1 while pest uses 2" },
+    # usdt's DOF writer remains on 0.7 while rand_chacha uses 0.8.
+    { crate = "zerocopy", depth = 1, reason = "dof pins 0.7 while rand_chacha uses 0.8" },
+    # The proc-macro half of the thiserror split above. It moves with it.
+    { crate = "thiserror-impl", depth = 1, reason = "follows the thiserror 1/2 split in the usdt stack" },
+    # UEFI backend of the getrandom split above. getrandom 0.3 pulls 5.3
+    # through jobserver, and getrandom 0.4 pulls 6.0 through tempfile.
+    { crate = "r-efi", depth = 1, reason = "follows the getrandom split; not built on any supported target" },
+    # The derive half of the zerocopy split above. acpi_tables turns on
+    # zerocopy's derive feature at 0.8; dof already uses it at 0.7.
+    { crate = "zerocopy-derive", depth = 1, reason = "follows the zerocopy 0.7/0.8 split" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

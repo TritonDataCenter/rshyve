@@ -1,0 +1,5 @@
+# Rust's bundled lld cross-links musl from a macOS host. A Linux host's
+# system linker handles musl-static without this hint, and rustc puts
+# its own sysroot on the linker's PATH, so `rust-lld` resolves on both.
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"

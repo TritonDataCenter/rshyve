@@ -1,0 +1,12 @@
+--- a/src/tpm2/TPMCmd/TpmConfiguration/TpmConfiguration/TpmProfile_Common.h	2026-05-06 22:10:01
++++ b/src/tpm2/TPMCmd/TpmConfiguration/TpmConfiguration/TpmProfile_Common.h	2026-05-07 14:25:38
+@@ -49,6 +49,9 @@
+  #endif
+ #elif defined __APPLE__
+  #define  BIG_ENDIAN_TPM       NO
++#elif defined(__sun) || defined(__illumos__)
++ /* illumos/SmartOS: x86_64 is always little-endian */
++ #define  BIG_ENDIAN_TPM       NO
+ #else
+  #error Unsupported OS
+ #endif                                             /* libtpms added end */

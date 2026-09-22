@@ -1,0 +1,44 @@
+[package]
+name = "firehyve"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+license = "MPL-2.0"
+build = "build.rs"
+
+[[bin]]
+name = "firehyve"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+vmm_core.workspace = true
+vmm_config.workspace = true
+vmm_devices.workspace = true
+vmm_virtio.workspace = true
+vmm_machine.workspace = true
+vmm_boot.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+slog.workspace = true
+
+# Deliberately absent, and enforced by deny-firehyve.toml:
+#   vmm_migrate vmm_tpm vmm_tpm_sys vmm_storage vmm_hid vmm_passthru
+#   vmm_hyperv
+#
+# vmm_machine reaches the Hyper-V enlightenments through vmm_core's
+# MsrHandler trait, so vmm_hyperv stays out of this graph.
+#
+# Deliberately absent, not enforced, because a ban on a third-party crate
+# that only the crates above reach would be brittle:
+#   tokio futures
+#
+# serde, serde_json, erased-serde, thiserror and memmap2 ARE in this
+# graph: vmm_devices serialises device state, vmm_core uses thiserror
+# and vmm_boot maps the kernel image. Check with `cargo tree -p firehyve`
+# before adding a name to either list.
+#
+# bhyve_api and viona_api are absent because nothing in bin/firehyve
+# names them. Add either back only if firehyve's own device catalog does.

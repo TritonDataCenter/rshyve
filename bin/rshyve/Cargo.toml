@@ -1,0 +1,39 @@
+[package]
+name = "rshyve"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+license = "MPL-2.0"
+build = "build.rs"
+
+[[bin]]
+name = "rshyve"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+vmm_core.workspace = true
+vmm_config.workspace = true
+vmm_devices.workspace = true
+vmm_virtio.workspace = true
+vmm_storage.workspace = true
+vmm_hid.workspace = true
+vmm_passthru.workspace = true
+vmm_boot.workspace = true
+vmm_machine.workspace = true
+vmm_migrate.workspace = true
+vmm_hyperv.workspace = true
+vmm_tpm.workspace = true
+anyhow.workspace = true
+base64.workspace = true
+clap.workspace = true
+crc32fast.workspace = true
+libc.workspace = true
+memmap2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+slog.workspace = true
+slog-term.workspace = true
+thiserror.workspace = true

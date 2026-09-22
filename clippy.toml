@@ -1,0 +1,4 @@
+# PCI and virtio device constructors need many distinct inputs, and a
+# struct only moves the argument list somewhere else. 12 keeps the lint
+# useful without flagging every device constructor.
+too-many-arguments-threshold = 12

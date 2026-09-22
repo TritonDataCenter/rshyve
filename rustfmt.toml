@@ -1,0 +1,5 @@
+# The tree is hand-wrapped: the 95th percentile line is 72 columns and the
+# 99th is 83. rustfmt's default of 100 would rewrap code laid out on
+# purpose. 80 keeps that layout.
+edition = "2021"
+max_width = 80

@@ -1,0 +1,49 @@
+# Per-binary dependency boundary for bin/firehyve.
+#
+# This is a SECOND cargo-deny config on purpose. A `deny` key in the root
+# deny.toml applies to every graph that config is used for, which would
+# ban these crates workspace-wide and break rshyve.
+#
+# The gate runs as:
+#   cargo deny --locked --manifest-path bin/firehyve/Cargo.toml \
+#       --config deny-firehyve.toml --target x86_64-unknown-illumos \
+#       --exclude-dev check bans
+#
+# --manifest-path is the whole mechanism: it scopes the crate graph to
+# that one workspace member. `cargo tree -i` cannot do this. It exits 0
+# both when a crate is present and when it is filtered out of the scoped
+# graph.
+#
+# CAVEAT, and the reason tools/check-boundary-bans.sh exists: an
+# unmatched `deny` entry here is SILENT at every log level. There is no
+# `unused-deny` warning to match the root config's
+# unused-ignored-advisory. If a crate is renamed or deleted, its entry
+# is disarmed with no diagnostic. Every crate named below must therefore
+# be a workspace member, and that script asserts exactly that. A missing
+# --config file is silent in the same way: cargo-deny warns, falls back
+# to the default config, which bans nothing, and still exits 0. The
+# script checks for this file too.
+
+[bans]
+# The scoped graph does not inherit the root deny.toml's skip-tree
+# exemptions, so the workspace-wide duplicate policy would fail here on
+# duplicates that are already reviewed and accepted. Duplicates stay the
+# root config's job. This file answers only one question: did a
+# parity-only crate get into firehyve?
+multiple-versions = "allow"
+wildcards = "allow"
+
+# Workspace members only. A third-party name here would not be caught by
+# check-boundary-bans.sh, which lists `cargo metadata --no-deps`.
+deny = [
+    { crate = "vmm_migrate",  reason = "live migration is rshyve-only; firehyve has no control socket and no migration path" },
+    { crate = "vmm_storage",  reason = "AHCI and NVMe are rshyve-only; firehyve's block path is virtio-blk" },
+    { crate = "vmm_hid",      reason = "xHCI, PS/2 and the VNC framebuffer are rshyve-only" },
+    { crate = "vmm_passthru", reason = "PCI passthrough is rshyve-only" },
+    # vmm_machine reaches the enlightenments through vmm_core's MsrHandler
+    # trait, so only rshyve names the concrete crate. This entry keeps it
+    # that way.
+    { crate = "vmm_hyperv",   reason = "Hyper-V enlightenments are rshyve-only" },
+    { crate = "vmm_tpm",      reason = "vTPM is rshyve-only" },
+    { crate = "vmm_tpm_sys",  reason = "vendored libtpms must never enter the microVM build graph" },
+]

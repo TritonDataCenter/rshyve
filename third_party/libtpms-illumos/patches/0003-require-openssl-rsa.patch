@@ -1,0 +1,15 @@
+--- a/src/tpm2/TPMCmd/tpm/src/crypt/CryptRsa.c	2026-09-22 14:49:20
++++ b/src/tpm2/TPMCmd/tpm/src/crypt/CryptRsa.c	2026-09-22 14:49:20
+@@ -15,6 +15,12 @@
+ 
+ #include <assert.h>	 // libtpms added
+ #include <openssl/rsa.h> // libtpms added
++
++/* rust-bhyve: the reference RSA code below is affected by
++ * CVE-2026-6727 (OaepDecode timing). Refuse to compile it. */
++#if !USE_OPENSSL_FUNCTIONS_RSA
++#error "USE_OPENSSL_FUNCTIONS_RSA must be 1: the reference RSA path is affected by CVE-2026-6727"
++#endif
+ 
+ #if ALG_RSA
+ 

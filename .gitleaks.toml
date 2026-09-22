@@ -1,0 +1,25 @@
+# gitleaks configuration.
+#
+# Starts from the upstream rule set and excludes the paths this project
+# does not own. The CI job keeps the full history clean.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Paths that are vendored or intentionally sample data"
+
+paths = [
+  # Vendored upstream C. This project does not rewrite it, and its test
+  # vectors trip the entropy heuristics.
+  '''^third_party/''',
+  # Pinned upstream artifact digests, not credentials.
+  '''^THIRD_PARTY\.md$''',
+  '''^tools/fetch-edk2-bhyve\.sh$''',
+]
+
+regexes = [
+  # docs/mdata.md uses a fixed MAC in its example NIC. It is not a
+  # credential and it is not routable off the test network.
+  '''02:08:20:aa:bb:cc''',
+]

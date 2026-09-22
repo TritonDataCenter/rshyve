@@ -1,0 +1,19 @@
+[package]
+name = "vmm_storage"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+license = "MPL-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+vmm_devices.workspace = true
+vmm_core.workspace = true
+anyhow.workspace = true
+slog.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+vmm_devices_testsupport.workspace = true

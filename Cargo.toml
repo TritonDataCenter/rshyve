@@ -1,0 +1,123 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "crates/bhyve-api",
+    "crates/bhyve-api/sys",
+    "crates/viona-api",
+    "crates/dladm",
+    "crates/vmm-api-common",
+    "crates/vmm-core",
+    "crates/vmm-devices",
+    "crates/vmm-virtio",
+    "crates/vmm-storage",
+    "crates/vmm-hid",
+    "crates/vmm-passthru",
+    "crates/vmm-devices-testsupport",
+    "crates/vmm-boot",
+    "crates/vmm-migrate",
+    "crates/vmm-config",
+    "crates/vmm-hyperv",
+    "crates/vmm-tpm-sys",
+    "crates/vmm-tpm",
+    "crates/vmm-machine",
+    "bin/rshyve",
+    "bin/firehyve",
+    "tools/fhrun",
+]
+
+# fhrun-init and virtiofs-test cross-compile to
+# x86_64-unknown-linux-musl and carry their own workspace and lockfile.
+# Excluding them keeps a host `cargo build --workspace` off the Linux
+# toolchain.
+exclude = ["tools/fhrun-init", "tools/virtiofs-test"]
+
+[workspace.package]
+# The oldest toolchain in use is 1.94.1 on the illumos build host. The
+# msrv job in CI checks it. Raise both together.
+rust-version = "1.94"
+
+[workspace.lints.rust]
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+# The one deny-by-default clippy group, and the one that catches
+# undefined behaviour (uninit_assumed_init, invalid_null_ptr_usage,
+# size_of_in_element_count). The tree is clean under it, so deny costs
+# nothing.
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+# `const _: () = assert!(...)` is an intentional compile-time layout check.
+assertions_on_constants = "allow"
+# Callback and device registry shapes are clearer at their use sites unless a
+# domain-specific alias has an obvious name.
+type_complexity = "allow"
+
+[profile.dev-abort]
+inherits = "dev"
+panic = "abort"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"
+
+[workspace.dependencies]
+# Internal crates
+bhyve_api = { path = "crates/bhyve-api" }
+bhyve_api_sys = { path = "crates/bhyve-api/sys" }
+viona_api = { path = "crates/viona-api" }
+dladm = { path = "crates/dladm" }
+vmm_api_common = { path = "crates/vmm-api-common" }
+vmm_core = { path = "crates/vmm-core" }
+vmm_devices = { path = "crates/vmm-devices" }
+vmm_virtio = { path = "crates/vmm-virtio" }
+vmm_storage = { path = "crates/vmm-storage" }
+vmm_hid = { path = "crates/vmm-hid" }
+vmm_passthru = { path = "crates/vmm-passthru" }
+vmm_devices_testsupport = { path = "crates/vmm-devices-testsupport" }
+vmm_boot = { path = "crates/vmm-boot" }
+vmm_migrate = { path = "crates/vmm-migrate" }
+vmm_config = { path = "crates/vmm-config" }
+vmm_hyperv = { path = "crates/vmm-hyperv" }
+vmm_tpm_sys = { path = "crates/vmm-tpm-sys" }
+vmm_tpm = { path = "crates/vmm-tpm" }
+vmm_machine = { path = "crates/vmm-machine" }
+
+# External dependencies
+acpi_tables = "0.2.1"
+anyhow = "1.0"
+base64 = "0.21"
+crc32fast = "1.4"
+ascii = { version = "1.1", default-features = false }
+usdt = { version = "0.5", default-features = false }
+bitflags = "2.4"
+clap = { version = "4.2", features = ["derive"] }
+futures = "0.3"
+getrandom = "0.4"
+libc = "0.2"
+memmap2 = "0.9"
+ron = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+slog = "2.7"
+slog-async = "2.8"
+slog-term = "2.8"
+strum = "0.26"
+thiserror = "1.0"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.21"
+toml = "0.8"
+uuid = { version = "1.3", features = ["v4"] }
+des = "0.8"
+erased-serde = "0.4"
+# Proves at compile time that a type may be read from, or written to, a
+# byte buffer. A `Copy` bound cannot: it admits a type with padding, and
+# a type whose bit patterns are not all valid.
+zerocopy = { version = "0.8", features = ["derive"] }

@@ -1,0 +1,16 @@
+[package]
+name = "vmm_tpm"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+license = "MPL-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+vmm_core.workspace = true
+vmm_tpm_sys.workspace = true
+slog.workspace = true
+thiserror.workspace = true
+libc.workspace = true

@@ -1,0 +1,19 @@
+# Tests that only one target compiles.
+#
+# Written by tools/check-test-parity.py, checked by the same script in
+# CI. Every line is a test that runs on one platform and not the other,
+# so every line is a deliberate decision that somebody has to make:
+#
+#   illumos-only  the CI suite never runs it. Only the build host can.
+#   ci-only       the product platform never runs it.
+#
+# Add a line here when you mean it, and say why above it. If a test
+# appears here that you did not intend to gate, fix the gate instead.
+#
+# Columns: side, package:kind:target, test name.
+
+# These two open a real /dev/vmm and need the privilege to make a VM,
+# so the whole file is `#![cfg(target_os = "illumos")]`. Only the build
+# host runs them. See docs/testing.md.
+illumos-only  vmm_core:test:autodestruct  armed_autodestruct_reclaims_the_instance_on_close
+illumos-only  vmm_core:test:autodestruct  disarmed_autodestruct_keeps_the_instance
