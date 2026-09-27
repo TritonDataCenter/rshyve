@@ -268,9 +268,14 @@ fn check_abi(out_dir: &Path, header: &Path, linkfarm: &Path) {
 
     let cc = env::var("CC").unwrap_or_else(|_| "cc".into());
     let mut cmd = Command::new(&cc);
+    // GCC 13 only warns about a missing prototype, and the probe then
+    // runs with a pointer truncated to int. The deprecated calls are the
+    // ones libtpms makes, so their warnings would only bury a real error.
     cmd.arg(&probe_src)
         .arg("-o")
         .arg(&probe_bin)
+        .arg("-Werror=implicit-function-declaration")
+        .arg("-Wno-deprecated-declarations")
         .arg(format!("-include{}", header.display()));
     for flag in pkg_config(&["--cflags-only-I", "openssl"]).split_whitespace() {
         cmd.arg(flag);
@@ -312,6 +317,7 @@ const ABI_PROBE_C: &str = r#"
 #include <openssl/crypto.h>
 #include <openssl/ec.h>
 #include <openssl/evp.h>
+#include <openssl/kdf.h>
 #include <openssl/opensslv.h>
 #include <openssl/param_build.h>
 #include <openssl/rand.h>
